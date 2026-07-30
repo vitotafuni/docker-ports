@@ -1,0 +1,25 @@
+{
+  "name": "docker-ports",
+  "version": "1.0.0",
+  "description": "Centralized base port registry helper for multi-developer Docker Compose environments",
+  "main": "index.js",
+  "bin": {
+    "docker-ports": "./index.js"
+  },
+  "preferGlobal": true,
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "docker",
+    "docker-compose",
+    "ports",
+    "registry",
+    "devops"
+  ],
+  "author": "Vito Tafuni",
+  "license": "MIT",
+  "dependencies": {
+    "picocolors": "^1.0.1"
+  }
+}
