@@ -1,66 +1,128 @@
 # Docker Ports Manager (docker-ports)
 
-A centralized cross-project port assignment registry CLI tailored for agency servers and development machines where multiple containers contend for public port bindings. Use this utility as a robust, structured scratchpad ledger to lock base port clusters without running heavy reverse proxies.
+A shared registry that assigns every Docker project a block of ports, so two projects never contend for the same one.
 
-## Features
-- **Zero Host Overhead**: Pure, lightweight Node.js architecture.
-- **Dynamic Port Jumps**: Safe sequential assignment using configurable offset ranges.
-- **Flexible Scope Control**: Share ledgers across users via directory mapping configurations or file path overrides.
-- **Manual Adjustments Supported**: Merge explicit legacy configurations into standard tracking logs instantly.
+It is a small CLI over a single JSON file that holds both the port assignments and the range they follow. No daemon, no reverse proxy, nothing listening. Point several developers at the same file — on a shared partition, for instance — and the registry stays consistent: every write takes an exclusive lock and lands atomically.
 
 ## Installation
 
-Install globally straight from Git repository resource endpoint:
 ```bash
-npm install -g git+https://github.com/vitotafuni/docker-ports.git
+npm install -g docker-ports
 ```
 
-## Usage Cheatsheet
+## How ports are assigned
 
-### 1. Tracking Configurations
+Each project reserves a block of `portStep` ports (10 by default) starting at its base port: a project on `8010` holds `8010-8019`. `add` and `update` reject any port that falls inside another project's block, and `next` returns the first free block starting from `startPort` (8000 by default) — including blocks freed by `del`.
+
+## Usage
+
+### Registering projects
+
 ```bash
-# Add project automatically calculating next sequence block
+# Assign the first free block automatically
 docker-ports add storefront-api
 
-# Add project mapping a descriptive string
-docker-ports add portal-fe "Client portal react application entry"
+# Add a description
+docker-ports add portal-fe "Client portal React application"
 
-# Bind an explicit port assignment forcefully
-docker-ports add legacy-db 3307 "Shared fallback postgres mapping node"
+# Pin an explicit port
+docker-ports add legacy-db 3307 "Shared fallback postgres"
+
+# Register a deliberate overlap (rejected without the flag)
+docker-ports add sidecar 3308 "Shares the legacy-db block" --force
 ```
 
-### 2. Monitoring & Audits
+### Inspecting
+
 ```bash
-# Display tabular register matrix records sorted by active ports
+# All projects, sorted by port
 docker-ports list
 
-# Query next unassigned baseline index for orchestration automation tasks
+# First free base port, for scripting
 docker-ports next
 ```
 
-### 3. Updates & Deletions
-```bash
-# Force-modify assigned ports or definitions on a project profile
-docker-ports update storefront-api 8020 "Migrated container ingress rule"
+### Updating and removing
 
-# Remove project metadata from database tracking registries
+```bash
+docker-ports update storefront-api 8020 "Migrated container ingress"
 docker-ports del storefront-api
 ```
 
-### 4. Shared Registry Path Context Remapping
-```bash
-# Redirect active folder queries to read/write onto a shared filesystem partition
-docker-ports path /mnt/shared/agency-port-ledger
+### Choosing which registry file to use
 
-# Inquire where data maps currently resolve
+```bash
+# Use a registry on a shared partition
+docker-ports path /mnt/shared/team-ports.json
+
+# Show which file is in use, and what it contains
 docker-ports path
 
-# Remove local configuration context mapping blocks
+# Go back to the default file
 docker-ports path --reset
 ```
 
-### 5. Adjust Intervals and Starting Baselines
+### Adjusting the range
+
 ```bash
-# Reconfigure calculation bounds to assign from 5000 onwards incrementing by 20 entries
+# Assign from 5000 onwards, in steps of 20
 docker-ports start 5000 20
 ```
+
+## The registry file
+
+Everything lives in **one JSON file**: the settings and the projects they apply to.
+
+```json
+{
+  "startPort": 8000,
+  "portStep": 20,
+  "projects": [
+    { "port": 8000, "id": "api", "desc": "servizio api" },
+    { "port": 8020, "id": "web", "desc": "" }
+  ]
+}
+```
+
+By default it is `~/.docker-ports/projects.json`. Point at another one — anywhere — with `path`:
+
+```bash
+docker-ports path /mnt/shared/team-ports.json
+```
+
+That is the whole configuration story. Sharing a registry is sharing that file, so there is nothing to keep in sync: the range travels with the projects it describes, and a colleague who points at the file inherits it.
+
+```bash
+$ docker-ports path /mnt/shared/team-ports.json
+✔ Registry file set to: /mnt/shared/team-ports.json
+  This applies to every directory you run docker-ports from.
+  Joined an existing registry: 2 project(s), ports from 8000, blocks of 20.
+```
+
+The only thing recorded per user is which file to open, in `~/.docker-ports/config.json`. If you would rather have nothing there at all, name the file in your shell profile instead:
+
+```bash
+export DOCKER_PORTS_FILE=/mnt/shared/team-ports.json
+```
+
+`DOCKER_PORTS_FILE` also works per command, to look at another registry without changing anything:
+
+```bash
+DOCKER_PORTS_FILE=/tmp/scratch.json docker-ports list
+```
+
+Passing a directory to `path` or `DOCKER_PORTS_FILE` is fine too — it resolves to `projects.json` inside it.
+
+### Upgrading from earlier versions
+
+Registries written before 1.2.0 were a bare JSON array of projects. They are still read, and the first command that writes upgrades the file in place, keeping every entry. Versions before 1.1.0 also read a `.docker-ports-config.json` from the current directory; that file is now ignored, with a warning, because configuration no longer depends on where the command runs. Run `docker-ports path <file>` once, then delete it — `docker-ports path --reset` removes it for you.
+
+## Tests
+
+```bash
+npm test
+```
+
+## License
+
+MIT
