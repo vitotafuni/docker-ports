@@ -1,0 +1,60 @@
+name: Publish to npm
+
+# Publishing happens when you create a GitHub Release, so the decision stays a
+# deliberate one. No npm token is stored anywhere: the job authenticates to npm
+# over OIDC as a trusted publisher, which also attaches build provenance.
+#
+# One-time setup on npmjs.com, under
+# https://www.npmjs.com/package/docker-ports/access:
+#   add a trusted publisher -> GitHub Actions
+#   repository: vitotafuni/docker-ports
+#   workflow:   publish.yml
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # required to obtain the OIDC token npm verifies
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
+
+      # Trusted publishing needs npm 11.5.1 or later, which is newer than the
+      # npm bundled with the Node runtimes.
+      - run: npm install -g npm@latest
+
+      - run: npm ci
+      - run: npm test
+
+      - name: Refuse to publish if the tag and package.json disagree
+        if: github.event_name == 'release'
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          pkg="$(node -p "require('./package.json').version")"
+          if [ "$tag" != "$pkg" ]; then
+            echo "Release tag is $tag but package.json says $pkg."
+            echo "Bump one of them so the published version matches the tag."
+            exit 1
+          fi
+
+      - name: Refuse to republish an existing version
+        run: |
+          pkg="$(node -p "require('./package.json').version")"
+          if npm view "docker-ports@$pkg" version > /dev/null 2>&1; then
+            echo "docker-ports@$pkg is already on npm and versions cannot be reused."
+            echo "Bump the version in package.json first."
+            exit 1
+          fi
+
+      - run: npm publish --provenance

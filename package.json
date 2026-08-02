@@ -5,13 +5,21 @@
   "bin": {
     "docker-ports": "./index.js"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vitotafuni/docker-ports.git"
+  },
+  "homepage": "https://github.com/vitotafuni/docker-ports#readme",
+  "bugs": {
+    "url": "https://github.com/vitotafuni/docker-ports/issues"
+  },
   "files": [
     "index.js",
     "README.md",
     "LICENSE"
   ],
   "engines": {
-    "node": ">=14"
+    "node": ">=18"
   },
   "scripts": {
     "test": "bash tests/run.sh"
