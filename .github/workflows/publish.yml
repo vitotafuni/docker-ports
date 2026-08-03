@@ -30,31 +30,38 @@ jobs:
           node-version: '22'
           registry-url: 'https://registry.npmjs.org'
 
-      # Trusted publishing needs npm 11.5.1 or later, which is newer than the
-      # npm bundled with the Node runtimes.
-      - run: npm install -g npm@latest
-
-      - run: npm ci
-      - run: npm test
-
+      # The version checks come first: they cost seconds, need no dependencies,
+      # and catch the mistake that is otherwise reported at the very end as an
+      # E403 that reads like an authentication failure.
       - name: Refuse to publish if the tag and package.json disagree
         if: github.event_name == 'release'
         run: |
           tag="${GITHUB_REF_NAME#v}"
           pkg="$(node -p "require('./package.json').version")"
           if [ "$tag" != "$pkg" ]; then
-            echo "Release tag is $tag but package.json says $pkg."
+            echo "::error::Release tag is $tag but package.json says $pkg."
             echo "Bump one of them so the published version matches the tag."
             exit 1
           fi
+          echo "Publishing version $pkg."
 
       - name: Refuse to republish an existing version
         run: |
           pkg="$(node -p "require('./package.json').version")"
+          # npm view exits 0 when the exact version exists, non-zero otherwise
+          # (including when the package itself is new).
           if npm view "docker-ports@$pkg" version > /dev/null 2>&1; then
-            echo "docker-ports@$pkg is already on npm and versions cannot be reused."
-            echo "Bump the version in package.json first."
+            echo "::error::docker-ports@$pkg is already published, and npm never lets a version be reused."
+            echo "Bump the version in package.json, tag the new version, and release again."
             exit 1
           fi
+          echo "Version $pkg is not on npm yet."
+
+      # Trusted publishing needs npm 11.5.1 or later, which is newer than the
+      # npm bundled with the Node runtimes.
+      - run: npm install -g npm@latest
+
+      - run: npm ci
+      - run: npm test
 
       - run: npm publish --provenance
